@@ -1,0 +1,85 @@
+<template>
+  <JoLoadMore
+    key="find-rec"
+    ref="loadmore"
+    @onRefresh="onRefresh"
+    @onLoadMore="onLoadMore"
+  >{{getSex}}
+    <UserItem
+      v-for="user in users"
+      :key="`${user.id}-from-${user.searchFrom}`"
+      :user="user"
+    />
+  </JoLoadMore>
+</template>
+
+<script>
+import UserItem from '@/components/UserItem.vue'
+import * as userApi from '@/api/user'
+
+export default {
+  name: 'FindRec',
+  components: { UserItem },
+  data () {
+    return {
+      users: [],
+      sex:this.$store.state.USER_SEX
+    }
+  },
+  activated () {
+    this.$refs.loadmore.beforeRefresh()
+  },
+  computed:{
+    getSex(){
+      this.sex=this.$store.state.USER_SEX;
+    }
+  },
+  methods: {
+    onRefresh () {
+      let parm={sex:this.sex};
+      const recommendPromise = userApi
+        .findUserByType('recommends',parm)
+        .then(({ data: users }) => {
+          this.users = users
+          return users.map(u => {
+            u.searchFrom = 'recommend'
+            return u
+          })
+        })
+      const tagsPromise = userApi
+        .findUserByType('find-by-tags',parm)
+        .then(({ data: users }) => {
+          this.users = users
+          this.$refs.loadmore.afterRefresh(users.length < 15)
+          return users.map(u => {
+            u.searchFrom = 'tags'
+            return u
+          })
+        })
+      // 并发获取用户
+      Promise.all([recommendPromise, tagsPromise])
+        .then(([recommendUsers, tagsUsers]) => {
+          this.users = [...recommendUsers, ...tagsUsers]
+        })
+        .catch(err => {
+          this.$refs.loadmore.afterRefresh(false)
+          return err
+        })
+    },
+    async onLoadMore () {
+      const { data: users } = await userApi.findUserByType('find-by-tags', {
+        offset: this.users.length,
+        sex:this.sex
+      })
+      this.users = [...this.users, ...users]
+      this.$refs.loadmore.afterLoadMore(users.length < 15)
+    },
+  },
+  watch:{
+    sex:function () {
+      this.$refs.loadmore.beforeRefresh();
+    }
+  }
+
+}
+</script>
